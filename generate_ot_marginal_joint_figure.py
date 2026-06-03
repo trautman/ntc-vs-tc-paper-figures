@@ -9,6 +9,7 @@ np.random.seed(7)
 
 N = 200
 # N = 200
+N_JOINT_PAIRS_TO_DISPLAY = 50
 T = 100
 S = 2.5
 
@@ -282,9 +283,12 @@ def label_start_goal(ax, x_start, x_goal, y, color, label, label_side):
         zorder=13,
     )
 
+# def add_agent_labels(ax, start_h, goal_h, start_r, goal_r):
+#     label_start_goal(ax, start_h[0], goal_h[0], 0.05, HUMAN_COLOR, "Human", "left")
+#     label_start_goal(ax, start_r[0], goal_r[0], -0.08, ROBOT_COLOR, "Robot", "right")
 def add_agent_labels(ax, start_h, goal_h, start_r, goal_r):
-    label_start_goal(ax, start_h[0], goal_h[0], 0.05, HUMAN_COLOR, "Human", "left")
-    label_start_goal(ax, start_r[0], goal_r[0], -0.08, ROBOT_COLOR, "Robot", "right")
+    label_start_goal(ax, start_h[0], goal_h[0], 0.0, HUMAN_COLOR, "Human", "left")
+    label_start_goal(ax, start_r[0], goal_r[0], 0.0, ROBOT_COLOR, "Robot", "right")
 
 
 def add_s_label(ax, start_h, start_r):
@@ -344,7 +348,31 @@ def main():
     gamma_ind = np.outer(p_h, p_r)
     gamma = solve_joint_kl(gamma_ind, C, lam=0.9)
 
-    pair_groups = split_pairs(H, R, gamma, k_scan=3000, k_each=22)
+    pair_groups = split_pairs(
+        H,
+        R,
+        gamma,
+        k_scan=3000,
+        k_each=N_JOINT_PAIRS_TO_DISPLAY,
+    )
+
+    total_ll = 0.0
+    total_rr = 0.0
+    total_bad = 0.0
+
+    for i in range(N):
+        for j in range(N):
+            h_side = side_at_midpoint(H[i])
+            r_side = side_at_midpoint(R[j])
+
+            if h_side > 0 and r_side < 0:
+                total_ll += gamma[i,j]
+            elif h_side < 0 and r_side > 0:
+                total_rr += gamma[i,j]
+            else:
+                total_bad += gamma[i,j]
+
+    print(total_ll, total_rr, total_bad)
 
     print("Mass by group:")
     for name, pairs in pair_groups.items():
@@ -407,40 +435,26 @@ def main():
     # Figure 2: joint pairs only
     # ----------------------------
 
-    fig_joint = plt.figure(figsize=(9.0, 6.2))
+    fig_joint = plt.figure(figsize=(7.2, 6.8))
+
     gs_joint = fig_joint.add_gridspec(
         2,
-        2,
-        height_ratios=[1.2, 1.2],
-        hspace=0.34,
-        wspace=0.14,
+        1,
+        hspace=0.20,
     )
 
-    ax_all = fig_joint.add_subplot(gs_joint[0, :])
-    ax_ll = fig_joint.add_subplot(gs_joint[1, 0])
-    ax_rr = fig_joint.add_subplot(gs_joint[1, 1])
+    ax_ll = fig_joint.add_subplot(gs_joint[0, 0])
+    ax_rr = fig_joint.add_subplot(gs_joint[1, 0])
 
-    setup_axis(ax_all)
-    plot_pair_group(ax_all, H, R, pair_groups["LR_RL"], BAD_COLOR, BAD_COLOR, alpha_scale=0.40)
-    plot_pair_group(ax_all, H, R, pair_groups["LL"], HUMAN_COLOR, ROBOT_COLOR, alpha_scale=0.65)
-    plot_pair_group(ax_all, H, R, pair_groups["RR"], HUMAN_COLOR, ROBOT_COLOR, alpha_scale=0.65)
-    add_agent_labels(ax_all, start_h, goal_h, start_r, goal_r)
-    ax_all.text(
-        0.0,
-        0.94,
-        r"Joint pairs weighted by $\gamma^*(h,r)$",
-        ha="center",
-        fontsize=10,
-    )
-
+   
     setup_axis(ax_ll)
     plot_pair_group(ax_ll, H, R, pair_groups["LL"], HUMAN_COLOR, ROBOT_COLOR)
     add_agent_labels(ax_ll, start_h, goal_h, start_r, goal_r)
-    add_s_label(ax_ll, start_h, start_r)
+    # add_s_label(ax_ll, start_h, start_r)
     ax_ll.text(
         0.0,
         0.92,
-        r"$\gamma^*$: both pass left (LL)",
+        r"Joint KL OT: Both Agents Go Left",
         ha="center",
         fontsize=10,
     )
@@ -448,11 +462,11 @@ def main():
     setup_axis(ax_rr)
     plot_pair_group(ax_rr, H, R, pair_groups["RR"], HUMAN_COLOR, ROBOT_COLOR)
     add_agent_labels(ax_rr, start_h, goal_h, start_r, goal_r)
-    add_s_label(ax_rr, start_h, start_r)
+    # add_s_label(ax_rr, start_h, start_r)
     ax_rr.text(
         0.0,
         0.92,
-        r"$\gamma^*$: both pass right (RR)",
+        r"Joint KL OT: Both Agents Go Right",
         ha="center",
         fontsize=10,
     )
