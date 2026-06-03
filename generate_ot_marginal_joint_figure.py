@@ -9,8 +9,8 @@ os.makedirs(OUTDIR, exist_ok=True)
 
 np.random.seed(7)
 
-N = 200
-N_JOINT_PAIRS_TO_DISPLAY = 200
+N = 500
+N_JOINT_PAIRS_TO_DISPLAY = 300
 T = 100
 S = 2.5
 
@@ -182,14 +182,6 @@ def split_pairs(H, R, gamma, k_scan=1000, k_each=18):
         h_side = local_lateral_side(H[i])
         r_side = local_lateral_side(R[j])
 
-        # if h_side == 0 or r_side == 0:
-        #     center.append((i, j, mass))
-        # elif h_side > 0 and r_side > 0:
-        #     ll.append((i, j, mass))
-        # elif h_side < 0 and r_side < 0:
-        #     rr.append((i, j, mass))
-        # else:
-        #     lr_rl.append((i, j, mass))
         if h_side == 0 or r_side == 0:
             center.append((i, j, mass))
         elif h_side > 0 and r_side > 0:
@@ -357,6 +349,58 @@ def add_centerline_arrow(ax, x_start, x_goal, y, color):
     )
 
 
+def sample_pairs_from_gamma(gamma, n_samples=1000, seed=0):
+    rng = np.random.default_rng(seed)
+
+    flat_probs = gamma.ravel()
+    flat_probs = flat_probs / flat_probs.sum()
+
+    flat_indices = rng.choice(
+        len(flat_probs),
+        size=n_samples,
+        replace=True,
+        p=flat_probs,
+    )
+
+    n_r = gamma.shape[1]
+
+    pairs = []
+    for flat_idx in flat_indices:
+        i = flat_idx // n_r
+        j = flat_idx % n_r
+        pairs.append((i, j, gamma[i, j]))
+
+    return pairs
+
+
+def classify_pairs(H, R, pairs):
+    groups = {
+        "LL": [],
+        "RR": [],
+        "LR": [],
+        "RL": [],
+        "center": [],
+    }
+
+    for i, j, mass in pairs:
+        h_side = local_lateral_side(H[i])
+        r_side = local_lateral_side(R[j])
+
+        if h_side == 0 or r_side == 0:
+            groups["center"].append((i, j, mass))
+        elif h_side > 0 and r_side > 0:
+            groups["LL"].append((i, j, mass))
+        elif h_side < 0 and r_side < 0:
+            groups["RR"].append((i, j, mass))
+        elif h_side > 0 and r_side < 0:
+            groups["LR"].append((i, j, mass))
+        else:
+            groups["RL"].append((i, j, mass))
+
+    return groups
+
+
+
 def main():
  
     # start_h = np.array([-1.25,  0.0])
@@ -384,13 +428,13 @@ def main():
     gamma_ind = np.outer(p_h, p_r)
     gamma = solve_joint_kl(gamma_ind, C, lam=0.9)
 
-    pair_groups = split_pairs(
-        H,
-        R,
+    sampled_pairs = sample_pairs_from_gamma(
         gamma,
-        k_scan=3000,
-        k_each=N_JOINT_PAIRS_TO_DISPLAY,
+        n_samples=N_JOINT_PAIRS_TO_DISPLAY,
+        seed=42,
     )
+
+    pair_groups = classify_pairs(H, R, sampled_pairs)
 
     total_ll = 0.0
     total_rr = 0.0
