@@ -9,7 +9,7 @@ np.random.seed(7)
 
 N = 200
 # N = 200
-N_JOINT_PAIRS_TO_DISPLAY = 50
+N_JOINT_PAIRS_TO_DISPLAY = 150
 T = 100
 S = 2.5
 
@@ -360,23 +360,48 @@ def main():
     total_rr = 0.0
     total_bad = 0.0
 
-    for i in range(N):
-        for j in range(N):
+    # for i in range(N):
+    #     for j in range(N):
+    #         h_side = side_at_midpoint(H[i])
+    #         r_side = side_at_midpoint(R[j])
+
+    #         if h_side > 0 and r_side < 0:
+    #             total_ll += gamma[i,j]
+    #         elif h_side < 0 and r_side > 0:
+    #             total_rr += gamma[i,j]
+    #         else:
+    #             total_bad += gamma[i,j]
+
+    # print(total_ll, total_rr, total_bad)
+
+    # print("Mass by group:")
+    # for name, pairs in pair_groups.items():
+    #     print(name, sum(mass for _, _, mass in pairs))
+    total_ll = 0.0
+    total_rr = 0.0
+    total_lr_rl = 0.0
+    total_center = 0.0
+
+    for i in range(len(H)):
+        for j in range(len(R)):
             h_side = side_at_midpoint(H[i])
             r_side = side_at_midpoint(R[j])
 
-            if h_side > 0 and r_side < 0:
-                total_ll += gamma[i,j]
+            if h_side == 0 or r_side == 0:
+                total_center += gamma[i, j]
+            elif h_side > 0 and r_side < 0:
+                total_ll += gamma[i, j]
             elif h_side < 0 and r_side > 0:
-                total_rr += gamma[i,j]
+                total_rr += gamma[i, j]
             else:
-                total_bad += gamma[i,j]
+                total_lr_rl += gamma[i, j]
 
-    print(total_ll, total_rr, total_bad)
-
-    print("Mass by group:")
-    for name, pairs in pair_groups.items():
-        print(name, sum(mass for _, _, mass in pairs))
+    print("Full gamma mass:")
+    print(f"LL      {total_ll:.6f}  ({100*total_ll:.2f}%)")
+    print(f"RR      {total_rr:.6f}  ({100*total_rr:.2f}%)")
+    print(f"LR/RL   {total_lr_rl:.6f}  ({100*total_lr_rl:.2f}%)")
+    print(f"center  {total_center:.6f}  ({100*total_center:.2f}%)")
+    print(f"total   {total_ll + total_rr + total_lr_rl + total_center:.6f}")
 
 
   
@@ -435,54 +460,142 @@ def main():
     # Figure 2: joint pairs only
     # ----------------------------
 
-    fig_joint = plt.figure(figsize=(7.2, 6.8))
+    # fig_joint = plt.figure(figsize=(7.2, 6.8))
 
-    gs_joint = fig_joint.add_gridspec(
-        2,
-        1,
-        hspace=0.20,
-    )
+    # gs_joint = fig_joint.add_gridspec(
+    #     2,
+    #     1,
+    #     hspace=0.20,
+    # )
 
-    ax_ll = fig_joint.add_subplot(gs_joint[0, 0])
-    ax_rr = fig_joint.add_subplot(gs_joint[1, 0])
+    # ax_ll = fig_joint.add_subplot(gs_joint[0, 0])
+    # ax_rr = fig_joint.add_subplot(gs_joint[1, 0])
 
    
+    # setup_axis(ax_ll)
+    # plot_pair_group(ax_ll, H, R, pair_groups["LL"], HUMAN_COLOR, ROBOT_COLOR)
+    # add_agent_labels(ax_ll, start_h, goal_h, start_r, goal_r)
+    # # add_s_label(ax_ll, start_h, start_r)
+    # ax_ll.text(
+    #     0.0,
+    #     0.92,
+    #     r"Joint KL OT: Both Agents Go Left",
+    #     ha="center",
+    #     fontsize=10,
+    # )
+
+    # setup_axis(ax_rr)
+    # plot_pair_group(ax_rr, H, R, pair_groups["RR"], HUMAN_COLOR, ROBOT_COLOR)
+    # add_agent_labels(ax_rr, start_h, goal_h, start_r, goal_r)
+    # # add_s_label(ax_rr, start_h, start_r)
+    # ax_rr.text(
+    #     0.0,
+    #     0.92,
+    #     r"Joint KL OT: Both Agents Go Right",
+    #     ha="center",
+    #     fontsize=10,
+    # )
+
+
+
+
+
+    # ----------------------------
+    # Figure 2a: LL mode
+    # ----------------------------
+
+    fig_ll = plt.figure(figsize=(3.8, 3.2))
+    ax_ll = fig_ll.add_subplot(1, 1, 1)
+
     setup_axis(ax_ll)
-    plot_pair_group(ax_ll, H, R, pair_groups["LL"], HUMAN_COLOR, ROBOT_COLOR)
+
+    plot_pair_group(
+        ax_ll,
+        H,
+        R,
+        pair_groups["LL"],
+        HUMAN_COLOR,
+        ROBOT_COLOR,
+    )
+
     add_agent_labels(ax_ll, start_h, goal_h, start_r, goal_r)
-    # add_s_label(ax_ll, start_h, start_r)
+
     ax_ll.text(
         0.0,
         0.92,
-        r"Joint KL OT: Both Agents Go Left",
+        r"LL mode",
         ha="center",
         fontsize=10,
     )
 
+    ll_png_path = os.path.join(OUTDIR, "ot_joint_LL.png")
+
+    fig_ll.savefig(
+        ll_png_path,
+        dpi=300,
+        bbox_inches="tight",
+    )
+
+    # ----------------------------
+    # Figure 2b: RR mode
+    # ----------------------------
+
+    fig_rr = plt.figure(figsize=(3.8, 3.2))
+    ax_rr = fig_rr.add_subplot(1, 1, 1)
+
     setup_axis(ax_rr)
-    plot_pair_group(ax_rr, H, R, pair_groups["RR"], HUMAN_COLOR, ROBOT_COLOR)
+
+    plot_pair_group(
+        ax_rr,
+        H,
+        R,
+        pair_groups["RR"],
+        HUMAN_COLOR,
+        ROBOT_COLOR,
+    )
+
     add_agent_labels(ax_rr, start_h, goal_h, start_r, goal_r)
-    # add_s_label(ax_rr, start_h, start_r)
+
     ax_rr.text(
         0.0,
         0.92,
-        r"Joint KL OT: Both Agents Go Right",
+        r"RR mode",
         ha="center",
         fontsize=10,
     )
 
-    joint_png_path = os.path.join(OUTDIR, "ot_joint_pair_modes.png")
-    joint_pdf_path = os.path.join(OUTDIR, "ot_joint_pair_modes.pdf")
+    rr_png_path = os.path.join(OUTDIR, "ot_joint_RR.png")
 
-    fig_joint.savefig(joint_png_path, dpi=300, bbox_inches="tight")
-    # fig_joint.savefig(joint_pdf_path, bbox_inches="tight")
+    fig_rr.savefig(
+        rr_png_path,
+        dpi=300,
+        bbox_inches="tight",
+    )
 
-    plt.show()
+
+
+
 
     print(f"Wrote {marg_png_path}")
-    # print(f"Wrote {marg_pdf_path}")
-    print(f"Wrote {joint_png_path}")
-    # print(f"Wrote {joint_pdf_path}")
+    print(f"Wrote {ll_png_path}")
+    print(f"Wrote {rr_png_path}")
+
+
+
+
+
+    # joint_png_path = os.path.join(OUTDIR, "ot_joint_pair_modes.png")
+    # joint_pdf_path = os.path.join(OUTDIR, "ot_joint_pair_modes.pdf")
+
+    # fig_joint.savefig(joint_png_path, dpi=300, bbox_inches="tight")
+    # # fig_joint.savefig(joint_pdf_path, bbox_inches="tight")
+
+    # plt.show()
+
+    # print(f"Wrote {marg_png_path}")
+    # # print(f"Wrote {marg_pdf_path}")
+    # print(f"Wrote {joint_png_path}")
+    # # print(f"Wrote {joint_pdf_path}")
 
 
 if __name__ == "__main__":
