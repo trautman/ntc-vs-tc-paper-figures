@@ -9,7 +9,7 @@ os.makedirs(OUTDIR, exist_ok=True)
 
 np.random.seed(7)
 
-N = 500
+N = 300
 N_JOINT_PAIRS_TO_DISPLAY = 300
 T = 100
 S = 2.5
@@ -399,6 +399,36 @@ def classify_pairs(H, R, pairs):
 
     return groups
 
+def add_mode_title(ax, H, R, pairs, mode_name, mass):
+    if len(pairs) == 0:
+        y_top = 0.55
+    else:
+        y_top = max(
+            max(np.max(H[i][:, 1]), np.max(R[j][:, 1]))
+            for i, j, _ in pairs
+        )
+
+    title_y = min(y_top + 0.08, 0.96)
+    subtitle_y = title_y - 0.1
+
+    ax.text(
+        0.0,
+        title_y,
+        f"{mode_name} Passage",
+        ha="center",
+        va="bottom",
+        fontsize=10,
+    )
+
+    ax.text(
+        0.0,
+        subtitle_y,
+        f"({100*mass:.1f}% of $\\gamma^*$ mass)",
+        ha="center",
+        va="bottom",
+        fontsize=7,
+    )
+
 
 
 def main():
@@ -411,7 +441,7 @@ def main():
     start_h = np.array([-1.25,  0.0])
     goal_h  = np.array([ 1.25,  0.18])
 
-    start_r = np.array([ 1.25, -0.2])
+    start_r = np.array([ 1.25, -0.3])
     goal_r  = np.array([-1.25, 0.28])
 
     H = build_gp_like_library(start_h, goal_h, T=T, n_samples=N, seed=3)
@@ -436,35 +466,39 @@ def main():
 
     pair_groups = classify_pairs(H, R, sampled_pairs)
 
-    total_ll = 0.0
-    total_rr = 0.0
-    total_bad = 0.0
+    print("Sampled pair counts:")
+    for name, pairs in pair_groups.items():
+        print(name, len(pairs))
 
     total_ll = 0.0
     total_rr = 0.0
-    total_lr_rl = 0.0
+    total_lr = 0.0
+    total_rl = 0.0
     total_center = 0.0
 
     for i in range(len(H)):
         for j in range(len(R)):
-            h_side = side_at_midpoint(H[i])
-            r_side = side_at_midpoint(R[j])
+            h_side = local_lateral_side(H[i])
+            r_side = local_lateral_side(R[j])
 
             if h_side == 0 or r_side == 0:
                 total_center += gamma[i, j]
-            elif h_side > 0 and r_side < 0:
+            elif h_side > 0 and r_side > 0:
                 total_ll += gamma[i, j]
-            elif h_side < 0 and r_side > 0:
+            elif h_side < 0 and r_side < 0:
                 total_rr += gamma[i, j]
+            elif h_side > 0 and r_side < 0:
+                total_lr += gamma[i, j]
             else:
-                total_lr_rl += gamma[i, j]
+                total_rl += gamma[i, j]
 
     print("Full gamma mass:")
     print(f"LL      {total_ll:.6f}  ({100*total_ll:.2f}%)")
     print(f"RR      {total_rr:.6f}  ({100*total_rr:.2f}%)")
-    print(f"LR/RL   {total_lr_rl:.6f}  ({100*total_lr_rl:.2f}%)")
+    print(f"LR      {total_lr:.6f}  ({100*total_lr:.2f}%)")
+    print(f"RL      {total_rl:.6f}  ({100*total_rl:.2f}%)")
     print(f"center  {total_center:.6f}  ({100*total_center:.2f}%)")
-    print(f"total   {total_ll + total_rr + total_lr_rl + total_center:.6f}")
+    print(f"total   {total_ll + total_rr + total_lr + total_rl + total_center:.6f}")
 
 
   
@@ -537,13 +571,8 @@ def main():
 
     add_agent_labels(ax_ll, start_h, goal_h, start_r, goal_r)
 
-    ax_ll.text(
-        0.0,
-        0.92,
-        r"LL mode",
-        ha="center",
-        fontsize=10,
-    )
+    add_mode_title(ax_ll, H, R, pair_groups["LL"], "LL", total_ll)
+
 
     ll_png_path = os.path.join(OUTDIR, "ot_joint_LL.png")
 
@@ -573,14 +602,7 @@ def main():
 
     add_agent_labels(ax_rr, start_h, goal_h, start_r, goal_r)
 
-    ax_rr.text(
-        0.0,
-        0.92,
-        r"RR mode",
-        ha="center",
-        fontsize=10,
-    )
-
+    add_mode_title(ax_rr, H, R, pair_groups["RR"], "RR", total_rr)
     rr_png_path = os.path.join(OUTDIR, "ot_joint_RR.png")
 
     fig_rr.savefig(
@@ -599,13 +621,7 @@ def main():
     plot_pair_group(ax_lr, H, R, pair_groups["LR"], HUMAN_COLOR, ROBOT_COLOR)
     add_agent_labels(ax_lr, start_h, goal_h, start_r, goal_r)
 
-    ax_lr.text(
-        0.0,
-        0.92,
-        r"$\gamma^*_{\mathrm{LR}}$",
-        ha="center",
-        fontsize=18,
-    )
+    add_mode_title(ax_lr, H, R, pair_groups["LR"], "LR", total_lr)
 
     lr_png_path = os.path.join(OUTDIR, "ot_joint_LR.png")
     fig_lr.savefig(lr_png_path, dpi=300, bbox_inches="tight")
@@ -618,13 +634,7 @@ def main():
     plot_pair_group(ax_rl, H, R, pair_groups["RL"], HUMAN_COLOR, ROBOT_COLOR)
     add_agent_labels(ax_rl, start_h, goal_h, start_r, goal_r)
 
-    ax_rl.text(
-        0.0,
-        0.92,
-        r"$\gamma^*_{\mathrm{RL}}$",
-        ha="center",
-        fontsize=18,
-    )
+    add_mode_title(ax_rl, H, R, pair_groups["RL"], "RL", total_rl)
 
     rl_png_path = os.path.join(OUTDIR, "ot_joint_RL.png")
     fig_rl.savefig(rl_png_path, dpi=300, bbox_inches="tight")
