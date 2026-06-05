@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from matplotlib.markers import MarkerStyle
 from matplotlib.transforms import Affine2D
 
-OUTDIR = "paper-figures/"
+OUTDIR = "paper-figures-2-agent/"
 os.makedirs(OUTDIR, exist_ok=True)
 
 np.random.seed(7)
@@ -14,8 +14,10 @@ N_JOINT_PAIRS_TO_DISPLAY = 300
 T = 100
 S = 2.5
 
-HUMAN_COLOR = "green"
-ROBOT_COLOR = "firebrick"
+# HUMAN_COLOR = "green"
+# ROBOT_COLOR = "firebrick"
+HUMAN_COLOR = "orange"
+ROBOT_COLOR = "blue"
 BAD_COLOR = "#d64b7f"
 
 
@@ -204,10 +206,12 @@ def split_pairs(H, R, gamma, k_scan=1000, k_each=18):
 
 def setup_axis(ax):
     ax.set_aspect("equal")
-    ax.set_xlim(-1.45, 1.45)
-    ax.set_ylim(-1.05, 1.05)
+    ax.set_xlim(-1.35, 1.35)
+    ax.set_ylim(-0.80, 1.00)
+
     ax.set_xticks([])
     ax.set_yticks([])
+
     for spine in ax.spines.values():
         spine.set_visible(False)
 
@@ -399,34 +403,21 @@ def classify_pairs(H, R, pairs):
 
     return groups
 
-def add_mode_title(ax, H, R, pairs, mode_name, mass):
-    if len(pairs) == 0:
-        y_top = 0.55
-    else:
-        y_top = max(
-            max(np.max(H[i][:, 1]), np.max(R[j][:, 1]))
-            for i, j, _ in pairs
-        )
-
-    title_y = min(y_top + 0.08, 0.96)
-    subtitle_y = title_y - 0.1
-
+def add_mode_title(ax, mode_name, mass):
     ax.text(
         0.0,
-        title_y,
-        f"{mode_name} Passage",
+        0.94,
+        f"{mode_name} Mode ({100*mass:.1f}% of $\\gamma^*$ mass)",
         ha="center",
-        va="bottom",
+        va="center",
         fontsize=10,
-    )
-
-    ax.text(
-        0.0,
-        subtitle_y,
-        f"({100*mass:.1f}% of $\\gamma^*$ mass)",
-        ha="center",
-        va="bottom",
-        fontsize=7,
+        zorder=100,
+        bbox=dict(
+            facecolor="white",
+            edgecolor="none",
+            alpha=0.90,
+            pad=1.5,
+        ),
     )
 
 
@@ -539,13 +530,33 @@ def main():
         fontsize=15,
         ha="center",
     )
+
+    ax_marg.text(
+        0.0,
+        0.94,
+        "Marginals",
+        ha="center",
+        va="center",
+        fontsize=10,
+        zorder=100,
+        bbox=dict(
+            facecolor="white",
+            edgecolor="none",
+            alpha=0.90,
+            pad=1.5,
+        ),
+    )
  
 
     marg_png_path = os.path.join(OUTDIR, "ot_marginals_only.png")
     marg_pdf_path = os.path.join(OUTDIR, "ot_marginals_only.pdf")
 
-    fig_marg.savefig(marg_png_path, dpi=300, bbox_inches="tight")
-    # fig_marg.savefig(marg_pdf_path, bbox_inches="tight")
+    fig_marg.savefig(
+        marg_png_path,
+        dpi=300,
+        bbox_inches="tight",
+        pad_inches=0.02,
+    )
 
 
 
@@ -555,7 +566,7 @@ def main():
     # Figure 2a: LL mode
     # ----------------------------
 
-    fig_ll = plt.figure(figsize=(3.8, 3.2))
+    fig_ll = plt.figure(figsize=(7.2, 3.8))
     ax_ll = fig_ll.add_subplot(1, 1, 1)
 
     setup_axis(ax_ll)
@@ -571,7 +582,7 @@ def main():
 
     add_agent_labels(ax_ll, start_h, goal_h, start_r, goal_r)
 
-    add_mode_title(ax_ll, H, R, pair_groups["LL"], "LL", total_ll)
+    add_mode_title(ax_ll, "LL", total_ll)
 
 
     ll_png_path = os.path.join(OUTDIR, "ot_joint_LL.png")
@@ -580,13 +591,14 @@ def main():
         ll_png_path,
         dpi=300,
         bbox_inches="tight",
+        pad_inches=0.02,
     )
 
     # ----------------------------
     # Figure 2b: RR mode
     # ----------------------------
 
-    fig_rr = plt.figure(figsize=(3.8, 3.2))
+    fig_rr = plt.figure(figsize=(7.2, 3.8))
     ax_rr = fig_rr.add_subplot(1, 1, 1)
 
     setup_axis(ax_rr)
@@ -602,42 +614,52 @@ def main():
 
     add_agent_labels(ax_rr, start_h, goal_h, start_r, goal_r)
 
-    add_mode_title(ax_rr, H, R, pair_groups["RR"], "RR", total_rr)
+    add_mode_title(ax_rr, "RR", total_rr)
+
     rr_png_path = os.path.join(OUTDIR, "ot_joint_RR.png")
 
     fig_rr.savefig(
         rr_png_path,
         dpi=300,
         bbox_inches="tight",
+        pad_inches=0.02,
     )
 
 
 
-
-    fig_lr = plt.figure(figsize=(3.8, 3.2))
+    fig_lr = plt.figure(figsize=(7.2, 3.8))
     ax_lr = fig_lr.add_subplot(1, 1, 1)
 
     setup_axis(ax_lr)
     plot_pair_group(ax_lr, H, R, pair_groups["LR"], HUMAN_COLOR, ROBOT_COLOR)
     add_agent_labels(ax_lr, start_h, goal_h, start_r, goal_r)
 
-    add_mode_title(ax_lr, H, R, pair_groups["LR"], "LR", total_lr)
+    add_mode_title(ax_lr, "LR", total_lr)
 
     lr_png_path = os.path.join(OUTDIR, "ot_joint_LR.png")
-    fig_lr.savefig(lr_png_path, dpi=300, bbox_inches="tight")
+    fig_lr.savefig(
+        lr_png_path,
+        dpi=300,
+        bbox_inches="tight",
+        pad_inches=0.02,
+    )
 
 
-    fig_rl = plt.figure(figsize=(3.8, 3.2))
+    fig_rl = plt.figure(figsize=(7.2, 3.8))
     ax_rl = fig_rl.add_subplot(1, 1, 1)
 
     setup_axis(ax_rl)
     plot_pair_group(ax_rl, H, R, pair_groups["RL"], HUMAN_COLOR, ROBOT_COLOR)
     add_agent_labels(ax_rl, start_h, goal_h, start_r, goal_r)
 
-    add_mode_title(ax_rl, H, R, pair_groups["RL"], "RL", total_rl)
-
+    add_mode_title(ax_rl, "RL", total_rl)
     rl_png_path = os.path.join(OUTDIR, "ot_joint_RL.png")
-    fig_rl.savefig(rl_png_path, dpi=300, bbox_inches="tight")
+    fig_rl.savefig(
+        rl_png_path,
+        dpi=300,
+        bbox_inches="tight",
+        pad_inches=0.02,
+    )
 
 
 
