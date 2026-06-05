@@ -4,8 +4,21 @@ import matplotlib.pyplot as plt
 from matplotlib.markers import MarkerStyle
 from matplotlib.transforms import Affine2D
 
+from ot_models import (
+    logsumexp,
+    solve_joint_kl,
+    solve_sinkhorn_ot,
+    solve_marginal_kl,
+    solve_balanced_ot,
+)
+
 OUTDIR = "paper-figures-2-agent/"
-os.makedirs(OUTDIR, exist_ok=True)
+
+SEPARATED_DIR = os.path.join(OUTDIR, "separated_plots")
+COMBINED_DIR = os.path.join(OUTDIR, "combined_plots")
+
+os.makedirs(SEPARATED_DIR, exist_ok=True)
+os.makedirs(COMBINED_DIR, exist_ok=True)
 
 np.random.seed(7)
 
@@ -21,9 +34,7 @@ ROBOT_COLOR = "blue"
 BAD_COLOR = "#d64b7f"
 
 
-def logsumexp(x):
-    m = np.max(x)
-    return m + np.log(np.sum(np.exp(x - m)))
+
 
 
 def softmax_from_logweights(logw):
@@ -107,9 +118,7 @@ def pairwise_cost(tr_h, tr_r):
     return collision_wall + comfort_wall + same_world_side_penalty + effort
 
 
-def solve_joint_kl(gamma_ind, C, lam=0.9):
-    log_gamma = np.log(gamma_ind + 1e-300) - C / lam
-    return np.exp(log_gamma - logsumexp(log_gamma.ravel()))
+
 
 
 def top_joint_pairs(gamma, k=1000):
@@ -421,14 +430,77 @@ def add_mode_title(ax, mode_name, mass):
     )
 
 
+def save_combined_mode_page(
+    mode_name,
+    model_results,
+    model_order,
+    H,
+    R,
+    start_h,
+    goal_h,
+    start_r,
+    goal_r,
+):
+    fig, axes = plt.subplots(1, 4, figsize=(14.4, 3.8))
+
+    for ax, (model_name, label) in zip(axes, model_order):
+
+        setup_axis(ax)
+
+        pairs = model_results[model_name]["pair_groups"][mode_name]
+        mass = model_results[model_name]["masses"][mode_name]
+
+        plot_pair_group(
+            ax,
+            H,
+            R,
+            pairs,
+            HUMAN_COLOR,
+            ROBOT_COLOR,
+        )
+
+        add_agent_labels(
+            ax,
+            start_h,
+            goal_h,
+            start_r,
+            goal_r,
+        )
+
+        ax.text(
+            0.0,
+            0.94,
+            f"{label}\n({100*mass:.1f}% mass)",
+            ha="center",
+            va="center",
+            fontsize=8,
+            zorder=100,
+            bbox=dict(
+                facecolor="white",
+                edgecolor="none",
+                alpha=0.90,
+                pad=1.5,
+            ),
+        )
+
+    out_path = os.path.join(
+        COMBINED_DIR,
+        f"{mode_name}_comparison.png",
+    )
+
+    fig.savefig(
+        out_path,
+        dpi=300,
+        bbox_inches="tight",
+        pad_inches=0.02,
+    )
+
+    print(f"Wrote {out_path}")
+
+
 
 def main():
  
-    # start_h = np.array([-1.25,  0.0])
-    # goal_h  = np.array([ 1.25,  0.48])
-
-    # start_r = np.array([ 1.25, -0.8])
-    # goal_r  = np.array([-1.25, 0.28])
     start_h = np.array([-1.25,  0.0])
     goal_h  = np.array([ 1.25,  0.18])
 
@@ -446,53 +518,8 @@ def main():
         for j in range(N):
             C[i, j] = pairwise_cost(H[i], R[j])
 
-    gamma_ind = np.outer(p_h, p_r)
-    gamma = solve_joint_kl(gamma_ind, C, lam=0.9)
-
-    sampled_pairs = sample_pairs_from_gamma(
-        gamma,
-        n_samples=N_JOINT_PAIRS_TO_DISPLAY,
-        seed=42,
-    )
-
-    pair_groups = classify_pairs(H, R, sampled_pairs)
-
-    print("Sampled pair counts:")
-    for name, pairs in pair_groups.items():
-        print(name, len(pairs))
-
-    total_ll = 0.0
-    total_rr = 0.0
-    total_lr = 0.0
-    total_rl = 0.0
-    total_center = 0.0
-
-    for i in range(len(H)):
-        for j in range(len(R)):
-            h_side = local_lateral_side(H[i])
-            r_side = local_lateral_side(R[j])
-
-            if h_side == 0 or r_side == 0:
-                total_center += gamma[i, j]
-            elif h_side > 0 and r_side > 0:
-                total_ll += gamma[i, j]
-            elif h_side < 0 and r_side < 0:
-                total_rr += gamma[i, j]
-            elif h_side > 0 and r_side < 0:
-                total_lr += gamma[i, j]
-            else:
-                total_rl += gamma[i, j]
-
-    print("Full gamma mass:")
-    print(f"LL      {total_ll:.6f}  ({100*total_ll:.2f}%)")
-    print(f"RR      {total_rr:.6f}  ({100*total_rr:.2f}%)")
-    print(f"LR      {total_lr:.6f}  ({100*total_lr:.2f}%)")
-    print(f"RL      {total_rl:.6f}  ({100*total_rl:.2f}%)")
-    print(f"center  {total_center:.6f}  ({100*total_center:.2f}%)")
-    print(f"total   {total_ll + total_rr + total_lr + total_rl + total_center:.6f}")
 
 
-  
     # ----------------------------
     # Figure 1: overlaid marginals
     # ----------------------------
@@ -559,110 +586,226 @@ def main():
     )
 
 
+    gamma_ind = np.outer(p_h, p_r)
+
+    models = {
+        "ot_kl_joint": solve_joint_kl(p_h, p_r, C, lam=0.9),
+        "ot_sinkhorn": solve_sinkhorn_ot(p_h, p_r, C, reg=0.9),
+        "ot_kl_marg": solve_marginal_kl(p_h, p_r, C, lam_h=0.9, lam_r=0.9, reg=1e-2),
+        "ot_balanced": solve_balanced_ot(p_h, p_r, C),
+    }
+
+    model_results = {}
+    for model_name, gamma in models.items():
+
+        sampled_pairs = sample_pairs_from_gamma(
+            gamma,
+            n_samples=N_JOINT_PAIRS_TO_DISPLAY,
+            seed=42,
+        )
+
+        pair_groups = classify_pairs(H, R, sampled_pairs)
+
+        print(f"\nModel: {model_name}")
+        print("Sampled pair counts:")
+        for name, pairs in pair_groups.items():
+            print(name, len(pairs))
+
+        total_ll = 0.0
+        total_rr = 0.0
+        total_lr = 0.0
+        total_rl = 0.0
+        total_center = 0.0
+
+        for i in range(len(H)):
+            for j in range(len(R)):
+                h_side = local_lateral_side(H[i])
+                r_side = local_lateral_side(R[j])
+
+                if h_side == 0 or r_side == 0:
+                    total_center += gamma[i, j]
+                elif h_side > 0 and r_side > 0:
+                    total_ll += gamma[i, j]
+                elif h_side < 0 and r_side < 0:
+                    total_rr += gamma[i, j]
+                elif h_side > 0 and r_side < 0:
+                    total_lr += gamma[i, j]
+                else:
+                    total_rl += gamma[i, j]
+
+        print("Full gamma mass:")
+        print(f"LL      {total_ll:.6f}  ({100*total_ll:.2f}%)")
+        print(f"RR      {total_rr:.6f}  ({100*total_rr:.2f}%)")
+        print(f"LR      {total_lr:.6f}  ({100*total_lr:.2f}%)")
+        print(f"RL      {total_rl:.6f}  ({100*total_rl:.2f}%)")
+        print(f"center  {total_center:.6f}  ({100*total_center:.2f}%)")
+        print(f"total   {total_ll + total_rr + total_lr + total_rl + total_center:.6f}")
+
+        model_results[model_name] = {
+            "pair_groups": pair_groups,
+            "masses": {
+                "LL": total_ll,
+                "RR": total_rr,
+                "LR": total_lr,
+                "RL": total_rl,
+            },
+        }
 
 
 
-    # ----------------------------
-    # Figure 2a: LL mode
-    # ----------------------------
 
-    fig_ll = plt.figure(figsize=(7.2, 3.8))
-    ax_ll = fig_ll.add_subplot(1, 1, 1)
+        # ----------------------------
+        # LL mode
+        # ----------------------------
 
-    setup_axis(ax_ll)
+        fig_ll = plt.figure(figsize=(7.2, 3.8))
+        ax_ll = fig_ll.add_subplot(1, 1, 1)
 
-    plot_pair_group(
-        ax_ll,
-        H,
-        R,
-        pair_groups["LL"],
-        HUMAN_COLOR,
-        ROBOT_COLOR,
-    )
+        setup_axis(ax_ll)
 
-    add_agent_labels(ax_ll, start_h, goal_h, start_r, goal_r)
+        plot_pair_group(
+            ax_ll,
+            H,
+            R,
+            pair_groups["LL"],
+            HUMAN_COLOR,
+            ROBOT_COLOR,
+        )
 
-    add_mode_title(ax_ll, "LL", total_ll)
+        add_agent_labels(ax_ll, start_h, goal_h, start_r, goal_r)
+        add_mode_title(ax_ll, "LL", total_ll)
+
+        ll_png_path = os.path.join(
+            SEPARATED_DIR,
+            f"{model_name}_LL.png",
+        )
+
+        fig_ll.savefig(
+            ll_png_path,
+            dpi=300,
+            bbox_inches="tight",
+            pad_inches=0.02,
+        )
+
+        # ----------------------------
+        # RR mode
+        # ----------------------------
+
+        fig_rr = plt.figure(figsize=(7.2, 3.8))
+        ax_rr = fig_rr.add_subplot(1, 1, 1)
+
+        setup_axis(ax_rr)
+
+        plot_pair_group(
+            ax_rr,
+            H,
+            R,
+            pair_groups["RR"],
+            HUMAN_COLOR,
+            ROBOT_COLOR,
+        )
+
+        add_agent_labels(ax_rr, start_h, goal_h, start_r, goal_r)
+        add_mode_title(ax_rr, "RR", total_rr)
+
+        rr_png_path = os.path.join(
+            SEPARATED_DIR,
+            f"{model_name}_RR.png",
+        )
+
+        fig_rr.savefig(
+            rr_png_path,
+            dpi=300,
+            bbox_inches="tight",
+            pad_inches=0.02,
+        )
+
+        # ----------------------------
+        # LR mode
+        # ----------------------------
+
+        fig_lr = plt.figure(figsize=(7.2, 3.8))
+        ax_lr = fig_lr.add_subplot(1, 1, 1)
+
+        setup_axis(ax_lr)
+
+        plot_pair_group(
+            ax_lr,
+            H,
+            R,
+            pair_groups["LR"],
+            HUMAN_COLOR,
+            ROBOT_COLOR,
+        )
+
+        add_agent_labels(ax_lr, start_h, goal_h, start_r, goal_r)
+        add_mode_title(ax_lr, "LR", total_lr)
+
+        lr_png_path = os.path.join(
+            SEPARATED_DIR,
+            f"{model_name}_LR.png",
+        )
+
+        fig_lr.savefig(
+            lr_png_path,
+            dpi=300,
+            bbox_inches="tight",
+            pad_inches=0.02,
+        )
+
+        # ----------------------------
+        # RL mode
+        # ----------------------------
+
+        fig_rl = plt.figure(figsize=(7.2, 3.8))
+        ax_rl = fig_rl.add_subplot(1, 1, 1)
+
+        setup_axis(ax_rl)
+
+        plot_pair_group(
+            ax_rl,
+            H,
+            R,
+            pair_groups["RL"],
+            HUMAN_COLOR,
+            ROBOT_COLOR,
+        )
+
+        add_agent_labels(ax_rl, start_h, goal_h, start_r, goal_r)
+        add_mode_title(ax_rl, "RL", total_rl)
+
+        rl_png_path = os.path.join(
+            SEPARATED_DIR,
+            f"{model_name}_RL.png",
+        )
+
+        fig_rl.savefig(
+            rl_png_path,
+            dpi=300,
+            bbox_inches="tight",
+            pad_inches=0.02,
+        )
 
 
-    ll_png_path = os.path.join(OUTDIR, "ot_joint_LL.png")
+    model_order = [
+        ("ot_balanced", "Balanced"),
+        ("ot_sinkhorn", "Sinkhorn"),
+        ("ot_kl_marg", "Marginal KL"),
+        ("ot_kl_joint", "Joint KL"),
+    ]
 
-    fig_ll.savefig(
-        ll_png_path,
-        dpi=300,
-        bbox_inches="tight",
-        pad_inches=0.02,
-    )
-
-    # ----------------------------
-    # Figure 2b: RR mode
-    # ----------------------------
-
-    fig_rr = plt.figure(figsize=(7.2, 3.8))
-    ax_rr = fig_rr.add_subplot(1, 1, 1)
-
-    setup_axis(ax_rr)
-
-    plot_pair_group(
-        ax_rr,
-        H,
-        R,
-        pair_groups["RR"],
-        HUMAN_COLOR,
-        ROBOT_COLOR,
-    )
-
-    add_agent_labels(ax_rr, start_h, goal_h, start_r, goal_r)
-
-    add_mode_title(ax_rr, "RR", total_rr)
-
-    rr_png_path = os.path.join(OUTDIR, "ot_joint_RR.png")
-
-    fig_rr.savefig(
-        rr_png_path,
-        dpi=300,
-        bbox_inches="tight",
-        pad_inches=0.02,
-    )
-
-
-
-    fig_lr = plt.figure(figsize=(7.2, 3.8))
-    ax_lr = fig_lr.add_subplot(1, 1, 1)
-
-    setup_axis(ax_lr)
-    plot_pair_group(ax_lr, H, R, pair_groups["LR"], HUMAN_COLOR, ROBOT_COLOR)
-    add_agent_labels(ax_lr, start_h, goal_h, start_r, goal_r)
-
-    add_mode_title(ax_lr, "LR", total_lr)
-
-    lr_png_path = os.path.join(OUTDIR, "ot_joint_LR.png")
-    fig_lr.savefig(
-        lr_png_path,
-        dpi=300,
-        bbox_inches="tight",
-        pad_inches=0.02,
-    )
-
-
-    fig_rl = plt.figure(figsize=(7.2, 3.8))
-    ax_rl = fig_rl.add_subplot(1, 1, 1)
-
-    setup_axis(ax_rl)
-    plot_pair_group(ax_rl, H, R, pair_groups["RL"], HUMAN_COLOR, ROBOT_COLOR)
-    add_agent_labels(ax_rl, start_h, goal_h, start_r, goal_r)
-
-    add_mode_title(ax_rl, "RL", total_rl)
-    rl_png_path = os.path.join(OUTDIR, "ot_joint_RL.png")
-    fig_rl.savefig(
-        rl_png_path,
-        dpi=300,
-        bbox_inches="tight",
-        pad_inches=0.02,
-    )
-
-
-
+    for mode_name in ["LL", "RR", "LR", "RL"]:
+        save_combined_mode_page(
+            mode_name,
+            model_results,
+            model_order,
+            H,
+            R,
+            start_h,
+            goal_h,
+            start_r,
+            goal_r,
+        )
 
     print(f"Wrote {marg_png_path}")
     print(f"Wrote {ll_png_path}")
