@@ -12,6 +12,15 @@ from ot_models import (
     solve_balanced_ot,
 )
 
+from point_estimates import (
+    compute_independent_point_estimate,
+    compute_collaborative_point_estimate,
+    compute_cost_only_point_estimate,
+    compute_joint_argmax,
+)
+
+from estimate_plotting import plot_estimate_pair
+
 OUTDIR = "paper-figures-2-agent/"
 
 SEPARATED_DIR = os.path.join(OUTDIR, "separated_plots")
@@ -412,6 +421,22 @@ def classify_pairs(H, R, pairs):
 
     return groups
 
+
+def classify_pair_mode(H, R, i, j):
+    h_side = local_lateral_side(H[i])
+    r_side = local_lateral_side(R[j])
+
+    if h_side == 0 or r_side == 0:
+        return "center"
+    if h_side > 0 and r_side > 0:
+        return "LL"
+    if h_side < 0 and r_side < 0:
+        return "RR"
+    if h_side > 0 and r_side < 0:
+        return "LR"
+    return "RL"
+
+
 def add_mode_title(ax, mode_name, mass):
     ax.text(
         0.0,
@@ -497,6 +522,95 @@ def save_combined_mode_page(
 
     print(f"Wrote {out_path}")
 
+
+
+
+
+def add_point_estimate_overlays(
+        ax,
+        H,
+        R,
+        point_pair,
+        joint_pair,
+    ):
+        plot_estimate_pair(
+            ax,
+            H,
+            R,
+            point_pair,
+            h_color="red",
+            r_color="red",
+            lw=3.0,
+            linestyle="--",
+            alpha=1.0,
+            zorder=90,
+        )
+
+        plot_estimate_pair(
+            ax,
+            H,
+            R,
+            joint_pair,
+            h_color="black",
+            r_color="black",
+            lw=2.0,
+            linestyle="-",
+            alpha=1.0,
+            zorder=95,
+        )
+
+        ax.plot(
+            [],
+            [],
+            color="red",
+            linestyle="--",
+            linewidth=3.0,
+            label="Point estimate",
+        )
+
+        ax.plot(
+            [],
+            [],
+            color="black",
+            linestyle="-",
+            linewidth=2.0,
+            label=r"$\arg\max \gamma^*$",
+        )
+
+        ax.legend(
+            loc="lower center",
+            bbox_to_anchor=(0.5, 0.02),
+            fontsize=8,
+            framealpha=0.90,
+            facecolor="white",
+        )
+
+
+def save_point_estimate_overlay_if_matching(
+    fig,
+    model_name,
+    mode_name,
+    point_mode,
+):
+    if model_name != "ot_kl_joint":
+        return
+
+    if point_mode != mode_name:
+        return
+
+    point_overlay_path = os.path.join(
+        SEPARATED_DIR,
+        f"ot_kl_joint_{mode_name}_point_estimate.png",
+    )
+
+    fig.savefig(
+        point_overlay_path,
+        dpi=300,
+        bbox_inches="tight",
+        pad_inches=0.02,
+    )
+
+    print(f"Wrote {point_overlay_path}")
 
 
 def main():
@@ -595,6 +709,31 @@ def main():
         "ot_balanced": solve_balanced_ot(p_h, p_r, C),
     }
 
+    point_i, point_j, point_score = compute_collaborative_point_estimate(
+        p_h,
+        p_r,
+        C,
+        lam=0.9,
+    )
+
+    joint_i, joint_j, joint_mass = compute_joint_argmax(
+        models["ot_kl_joint"]
+    )
+
+
+
+    point_mode = classify_pair_mode(H, R, point_i, point_j)
+    joint_mode = classify_pair_mode(H, R, joint_i, joint_j)
+
+    print(f"  point estimate mode: {point_mode}")
+    print(f"  joint argmax mode:   {joint_mode}")
+
+
+    print("\nPoint estimate:")
+    print(f"  collaborative point estimate: ({point_i}, {point_j}), score={point_score:.6f}")
+    print(f"  joint-KL argmax:              ({joint_i}, {joint_j}), mass={joint_mass:.6e}")
+    print(f"  same pair? {point_i == joint_i and point_j == joint_j}")
+
     model_results = {}
     for model_name, gamma in models.items():
 
@@ -672,8 +811,23 @@ def main():
             ROBOT_COLOR,
         )
 
+
+
+        if model_name == "ot_kl_joint" and point_mode == "LL":
+            add_point_estimate_overlays(
+                ax_ll,
+                H,
+                R,
+                (point_i, point_j),
+                (joint_i, joint_j),
+            )
+
+ 
+
         add_agent_labels(ax_ll, start_h, goal_h, start_r, goal_r)
         add_mode_title(ax_ll, "LL", total_ll)
+
+
 
         ll_png_path = os.path.join(
             SEPARATED_DIR,
@@ -686,6 +840,14 @@ def main():
             bbox_inches="tight",
             pad_inches=0.02,
         )
+
+        save_point_estimate_overlay_if_matching(
+            fig_ll,
+            model_name,
+            "LL",
+            point_mode,
+        )
+
 
         # ----------------------------
         # RR mode
@@ -705,6 +867,15 @@ def main():
             ROBOT_COLOR,
         )
 
+        if model_name == "ot_kl_joint" and point_mode == "RR":
+            add_point_estimate_overlays(
+                ax_rr,
+                H,
+                R,
+                (point_i, point_j),
+                (joint_i, joint_j),
+            )
+
         add_agent_labels(ax_rr, start_h, goal_h, start_r, goal_r)
         add_mode_title(ax_rr, "RR", total_rr)
 
@@ -719,6 +890,14 @@ def main():
             bbox_inches="tight",
             pad_inches=0.02,
         )
+
+        save_point_estimate_overlay_if_matching(
+            fig_rr,
+            model_name,
+            "RR",
+            point_mode,
+        )
+
 
         # ----------------------------
         # LR mode
@@ -738,6 +917,17 @@ def main():
             ROBOT_COLOR,
         )
 
+        if model_name == "ot_kl_joint" and point_mode == "LR":
+            add_point_estimate_overlays(
+                ax_lr,
+                H,
+                R,
+                (point_i, point_j),
+                (joint_i, joint_j),
+            )
+
+
+
         add_agent_labels(ax_lr, start_h, goal_h, start_r, goal_r)
         add_mode_title(ax_lr, "LR", total_lr)
 
@@ -752,6 +942,15 @@ def main():
             bbox_inches="tight",
             pad_inches=0.02,
         )
+
+        save_point_estimate_overlay_if_matching(
+            fig_lr,
+            model_name,
+            "LR",
+            point_mode,
+        )
+
+
 
         # ----------------------------
         # RL mode
@@ -771,6 +970,16 @@ def main():
             ROBOT_COLOR,
         )
 
+        if model_name == "ot_kl_joint" and point_mode == "RL":
+            add_point_estimate_overlays(
+                ax_rl,
+                H,
+                R,
+                (point_i, point_j),
+                (joint_i, joint_j),
+            )
+
+
         add_agent_labels(ax_rl, start_h, goal_h, start_r, goal_r)
         add_mode_title(ax_rl, "RL", total_rl)
 
@@ -784,6 +993,14 @@ def main():
             dpi=300,
             bbox_inches="tight",
             pad_inches=0.02,
+        )
+
+
+        save_point_estimate_overlay_if_matching(
+            fig_rl,
+            model_name,
+            "RL",
+            point_mode,
         )
 
 
